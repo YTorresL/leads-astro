@@ -1,0 +1,146 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { ESTADOS, SERVICIOS, txt } from '../../lib/constants';
+
+const { id } = Astro.params;
+const isNew = id === 'nueva';
+const supabase = Astro.locals.supabase;
+let error = '';
+const saved = Astro.url.searchParams.get('ok') === '1';
+
+// ---------- Acciones (POST) ----------
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const intent = String(f.get('intent'));
+
+  if (intent === 'save_empresa') {
+    const punt = txt(f.get('puntuacion'));
+    const payload = {
+      nombre: String(f.get('nombre')).trim(),
+      sitio_web: txt(f.get('sitio_web')),
+      evidencia: txt(f.get('evidencia')),
+      problema_hipotetico: txt(f.get('problema_hipotetico')),
+      servicios_posibles: f.getAll('servicios').map(String),
+      puntuacion: punt === null ? null : Number(punt),
+    };
+    if (isNew) {
+      const { data, error: err } = await supabase.from('empresas').insert(payload).select('id').single();
+      if (err) error = err.message; else return Astro.redirect(`/empresas/${data.id}?ok=1`);
+    } else {
+      const { error: err } = await supabase.from('empresas').update(payload).eq('id', id!);
+      if (err) error = err.message; else return Astro.redirect(`/empresas/${id}?ok=1`);
+    }
+  }
+
+  if (intent === 'delete_empresa') {
+    const { error: err } = await supabase.from('empresas').delete().eq('id', id!);
+    if (err) error = err.message; else return Astro.redirect('/');
+  }
+
+  if (intent === 'add_contacto' || intent === 'save_contacto') {
+    const payload = {
+      nombre: String(f.get('nombre')).trim(),
+      cargo: txt(f.get('cargo')),
+      linkedin_url: txt(f.get('linkedin_url')),
+      fecha_conexion: txt(f.get('fecha_conexion')),
+      estado: String(f.get('estado') || 'por_investigar'),
+      proxima_accion: txt(f.get('proxima_accion')),
+      proxima_fecha: txt(f.get('proxima_fecha')),
+      resultado: txt(f.get('resultado')),
+    };
+    const { error: err } = intent === 'add_contacto'
+      ? await supabase.from('contactos').insert({ ...payload, empresa_id: id })
+      : await supabase.from('contactos').update(payload).eq('id', String(f.get('contacto_id')));
+    if (err) error = err.message; else return Astro.redirect(`/empresas/${id}?ok=1`);
+  }
+
+  if (intent === 'delete_contacto') {
+    const { error: err } = await supabase.from('contactos').delete().eq('id', String(f.get('contacto_id')));
+    if (err) error = err.message; else return Astro.redirect(`/empresas/${id}?ok=1`);
+  }
+}
+
+// ---------- Carga de datos ----------
+let empresa: any = { servicios_posibles: [] };
+let contactos: any[] = [];
+if (!isNew) {
+  const { data } = await supabase.from('empresas').select('*').eq('id', id!).single();
+  if (!data) return Astro.redirect('/');
+  empresa = data;
+  const res = await supabase.from('contactos').select('*').eq('empresa_id', id!).order('created_at');
+  contactos = res.data ?? [];
+}
+---
+<Layout title={isNew ? 'Nueva empresa' : empresa.nombre}>
+  <p><a href="/">← Volver a leads</a></p>
+  <h1>{isNew ? 'Nueva empresa' : empresa.nombre}</h1>
+  {saved && <div class="ok">Guardado ✔</div>}
+  {error && <div class="error">{error}</div>}
+
+  <!-- EMPRESA -->
+  <form method="post" class="card">
+    <h2>Empresa</h2>
+    <input type="hidden" name="intent" value="save_empresa" />
+    <div class="grid">
+      <div><label>Nombre *</label><input name="nombre" required value={empresa.nombre ?? ''} /></div>
+      <div><label>Sitio web</label><input name="sitio_web" type="url" placeholder="https://" value={empresa.sitio_web ?? ''} /></div>
+      <div><label>Puntuación (0–10)</label><input name="puntuacion" type="number" min="0" max="10" value={empresa.puntuacion ?? ''} /></div>
+    </div>
+    <label>Evidencia (observación concreta)</label>
+    <textarea name="evidencia">{empresa.evidencia ?? ''}</textarea>
+    <label>Problema hipotético</label>
+    <textarea name="problema_hipotetico">{empresa.problema_hipotetico ?? ''}</textarea>
+    <label>Servicios posibles</label>
+    <div class="checks">
+      {SERVICIOS.map((s) => (
+        <label><input type="checkbox" name="servicios" value={s.value} checked={empresa.servicios_posibles.includes(s.value)} /> {s.label}</label>
+      ))}
+    </div>
+    <div class="actions">
+      <button type="submit">{isNew ? 'Crear empresa' : 'Guardar empresa'}</button>
+      {!isNew && <button type="submit" name="intent" value="delete_empresa" class="danger" formnovalidate onclick="return confirm('¿Eliminar la empresa y todos sus contactos?')">Eliminar</button>}
+    </div>
+  </form>
+
+  <!-- CONTACTOS -->
+  {!isNew && (
+    <>
+      <h2>Contactos ({contactos.length})</h2>
+      {contactos.map((c) => (
+        <form method="post" class="card">
+          <input type="hidden" name="contacto_id" value={c.id} />
+          <div class="grid">
+            <div><label>Nombre *</label><input name="nombre" required value={c.nombre} /></div>
+            <div><label>Cargo</label><input name="cargo" value={c.cargo ?? ''} /></div>
+            <div><label>LinkedIn</label><input name="linkedin_url" type="url" value={c.linkedin_url ?? ''} /></div>
+            <div><label>Estado</label>
+              <select name="estado">{ESTADOS.map((e) => <option value={e.value} selected={e.value === c.estado}>{e.label}</option>)}</select>
+            </div>
+            <div><label>Fecha de conexión</label><input name="fecha_conexion" type="date" value={c.fecha_conexion ?? ''} /></div>
+            <div><label>Próxima fecha</label><input name="proxima_fecha" type="date" value={c.proxima_fecha ?? ''} /></div>
+          </div>
+          <label>Próxima acción</label><input name="proxima_accion" value={c.proxima_accion ?? ''} />
+          <label>Resultado</label><textarea name="resultado">{c.resultado ?? ''}</textarea>
+          <div class="actions">
+            <button type="submit" name="intent" value="save_contacto">Guardar contacto</button>
+            <button type="submit" name="intent" value="delete_contacto" class="danger" formnovalidate onclick="return confirm('¿Eliminar este contacto?')">Eliminar</button>
+          </div>
+        </form>
+      ))}
+
+      <form method="post" class="card">
+        <h2>+ Agregar contacto</h2>
+        <input type="hidden" name="intent" value="add_contacto" />
+        <div class="grid">
+          <div><label>Nombre *</label><input name="nombre" required /></div>
+          <div><label>Cargo</label><input name="cargo" /></div>
+          <div><label>LinkedIn</label><input name="linkedin_url" type="url" /></div>
+          <div><label>Estado</label>
+            <select name="estado">{ESTADOS.map((e) => <option value={e.value}>{e.label}</option>)}</select>
+          </div>
+        </div>
+        <div class="actions"><button type="submit">Agregar contacto</button></div>
+      </form>
+    </>
+  )}
+</Layout>

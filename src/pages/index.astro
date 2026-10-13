@@ -1,0 +1,66 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { ESTADOS, estadoLabel, servicioLabel } from '../lib/constants';
+
+const q = (Astro.url.searchParams.get('q') ?? '').toLowerCase();
+const estado = Astro.url.searchParams.get('estado') ?? '';
+
+const { data, error } = await Astro.locals.supabase
+  .from('empresas')
+  .select('*, contactos(*)')
+  .order('puntuacion', { ascending: false, nullsFirst: false })
+  .order('nombre');
+
+let empresas = data ?? [];
+if (q) empresas = empresas.filter((e) => e.nombre.toLowerCase().includes(q));
+if (estado) empresas = empresas.filter((e) => e.contactos.some((c: any) => c.estado === estado));
+
+// próxima acción más cercana entre los contactos de la empresa
+const proxima = (contactos: any[]) =>
+  contactos
+    .filter((c) => c.proxima_accion)
+    .sort((a, b) => (a.proxima_fecha ?? '9999').localeCompare(b.proxima_fecha ?? '9999'))[0];
+---
+<Layout title="Leads">
+  <h1>Leads <span class="muted">({empresas.length})</span></h1>
+  {error && <div class="error">{error.message}</div>}
+
+  <form class="filters" method="get">
+    <input type="search" name="q" placeholder="Buscar empresa…" value={q} />
+    <select name="estado">
+      <option value="">Todos los estados</option>
+      {ESTADOS.map((e) => <option value={e.value} selected={e.value === estado}>{e.label}</option>)}
+    </select>
+    <button type="submit" class="secondary">Filtrar</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr><th>Empresa</th><th>Pts</th><th>Servicios</th><th>Contactos</th><th>Próxima acción</th><th></th></tr>
+    </thead>
+    <tbody>
+      {empresas.length === 0 && <tr><td colspan="6" class="muted">Sin resultados.</td></tr>}
+      {empresas.map((e) => {
+        const p = proxima(e.contactos);
+        return (
+          <tr>
+            <td>
+              <strong>{e.nombre}</strong><br />
+              {e.sitio_web && <a href={e.sitio_web} target="_blank" rel="noopener">{e.sitio_web.replace(/^https?:\/\//, '')}</a>}
+            </td>
+            <td class="score">{e.puntuacion ?? '–'}</td>
+            <td>{e.servicios_posibles.map((s: string) => <span class="badge">{servicioLabel(s)}</span>)}</td>
+            <td>
+              {e.contactos.length === 0 && <span class="muted">—</span>}
+              {e.contactos.map((c: any) => (
+                <div>{c.nombre} <span class="badge">{estadoLabel(c.estado)}</span></div>
+              ))}
+            </td>
+            <td>{p ? <>{p.proxima_accion}<br /><span class="muted">{p.proxima_fecha ?? ''}</span></> : <span class="muted">—</span>}</td>
+            <td><a href={`/empresas/${e.id}`}>Editar</a></td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</Layout>
