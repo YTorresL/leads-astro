@@ -1,0 +1,95 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { CompanyForm } from '@/components/CompanyForm';
+import { ContactForm, NewContactForm } from '@/components/ContactForms';
+import { Notices } from '@/components/Notices';
+import { buttonVariants } from '@/components/ui/button';
+import { txt } from '@/lib/constants';
+import type { Company, Contact } from '@/lib/types';
+
+const { id } = Astro.params;
+const isNew = id === 'new';
+const supabase = Astro.locals.supabase;
+let error = '';
+const saved = Astro.url.searchParams.get('ok') === '1';
+
+// ---------- Acciones (POST) ----------
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const intent = String(f.get('intent'));
+
+  if (intent === 'save_company') {
+    const score = txt(f.get('score'));
+    const payload = {
+      name: String(f.get('name') ?? '').trim(),
+      website: txt(f.get('website')),
+      evidence: txt(f.get('evidence')),
+      hypothetical_problem: txt(f.get('hypothetical_problem')),
+      possible_services: f.getAll('services').map(String),
+      score: score === null ? null : Number(score),
+    };
+    if (isNew) {
+      const { data, error: err } = await supabase.from('companies').insert(payload).select('id').single();
+      if (err) error = err.message; else return Astro.redirect(`/companies/${data!.id}?ok=1`);
+    } else {
+      const { error: err } = await supabase.from('companies').update(payload).eq('id', id!);
+      if (err) error = err.message; else return Astro.redirect(`/companies/${id}?ok=1`);
+    }
+  }
+
+  if (intent === 'delete_company') {
+    const { error: err } = await supabase.from('companies').delete().eq('id', id!);
+    if (err) error = err.message; else return Astro.redirect('/');
+  }
+
+  if (intent === 'add_contact' || intent === 'save_contact') {
+    const payload = {
+      name: String(f.get('name') ?? '').trim(),
+      job_title: txt(f.get('job_title')),
+      linkedin_url: txt(f.get('linkedin_url')),
+      connection_date: txt(f.get('connection_date')),
+      status: String(f.get('status') || 'to_research'),
+      next_action: txt(f.get('next_action')),
+      next_action_date: txt(f.get('next_action_date')),
+      outcome: txt(f.get('outcome')),
+    };
+    const { error: err } = intent === 'add_contact'
+      ? await supabase.from('contacts').insert({ ...payload, company_id: id })
+      : await supabase.from('contacts').update(payload).eq('id', String(f.get('contact_id')));
+    if (err) error = err.message; else return Astro.redirect(`/companies/${id}?ok=1`);
+  }
+
+  if (intent === 'delete_contact') {
+    const { error: err } = await supabase.from('contacts').delete().eq('id', String(f.get('contact_id')));
+    if (err) error = err.message; else return Astro.redirect(`/companies/${id}?ok=1`);
+  }
+}
+
+// ---------- Carga de datos ----------
+let company: Partial<Company> = { possible_services: [] };
+let contacts: Contact[] = [];
+if (!isNew) {
+  const { data } = await supabase.from('companies').select('*').eq('id', id!).single();
+  if (!data) return Astro.redirect('/');
+  company = data as Company;
+  const res = await supabase.from('contacts').select('*').eq('company_id', id!).order('created_at');
+  contacts = (res.data ?? []) as Contact[];
+}
+---
+<Layout title={isNew ? 'Nueva empresa' : company.name}>
+  <a href="/" class={buttonVariants({ variant: 'link', size: 'sm' }) + ' -ml-3'}>← Volver a leads</a>
+  <h1 class="mb-4 text-2xl font-semibold tracking-tight">{isNew ? 'Nueva empresa' : company.name}</h1>
+  <Notices saved={saved} error={error} />
+
+  <CompanyForm company={company} isNew={isNew} />
+
+  {!isNew && (
+    <>
+      <h2 class="mb-3 text-lg font-semibold tracking-tight">Contactos ({contacts.length})</h2>
+      <div class="grid gap-4">
+        {contacts.map((c) => <ContactForm contact={c} />)}
+        <NewContactForm />
+      </div>
+    </>
+  )}
+</Layout>

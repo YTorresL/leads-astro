@@ -1,21 +1,23 @@
-export const ESTADOS = [
-  { value: 'por_investigar', label: 'Por investigar' },
-  { value: 'invitacion_enviada', label: 'Invitación enviada' },
-  { value: 'aceptada', label: 'Aceptada' },
-  { value: 'conversacion', label: 'Conversación' },
-  { value: 'oportunidad', label: 'Oportunidad' },
-  { value: 'cerrado', label: 'Cerrado' },
+// Los `value` coinciden con los CHECK de la base de datos (inglés);
+// los `label` son lo que se muestra en la interfaz.
+export const STATUSES = [
+  { value: 'to_research', label: 'Por investigar' },
+  { value: 'invitation_sent', label: 'Invitación enviada' },
+  { value: 'accepted', label: 'Aceptada' },
+  { value: 'conversation', label: 'Conversación' },
+  { value: 'opportunity', label: 'Oportunidad' },
+  { value: 'closed', label: 'Cerrado' },
 ] as const;
 
-export const SERVICIOS = [
-  { value: 'web', label: 'Web' },
-  { value: 'mantenimiento', label: 'Mantenimiento' },
-  { value: 'integracion', label: 'Integración' },
-  { value: 'automatizacion', label: 'Automatización' },
+export const SERVICES = [
+  { value: 'website', label: 'Web' },
+  { value: 'maintenance', label: 'Mantenimiento' },
+  { value: 'integration', label: 'Integración' },
+  { value: 'automation', label: 'Automatización' },
 ] as const;
 
-export const estadoLabel = (v: string) => ESTADOS.find((e) => e.value === v)?.label ?? v;
-export const servicioLabel = (v: string) => SERVICIOS.find((s) => s.value === v)?.label ?? v;
+export const statusLabel = (v: string) => STATUSES.find((s) => s.value === v)?.label ?? v;
+export const serviceLabel = (v: string) => SERVICES.find((s) => s.value === v)?.label ?? v;
 
 // "" -> null, para guardar campos vacíos como NULL
 export const txt = (v: FormDataEntryValue | null) => {
