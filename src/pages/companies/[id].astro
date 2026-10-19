@@ -140,6 +140,19 @@ if (!isNew) {
 <Layout title={isNew ? 'Nueva empresa' : company.name}>
   <a href="/" class={buttonVariants({ variant: 'link', size: 'sm' }) + ' -ml-3'}>← Volver a leads</a>
   <h1 class="mb-4 text-2xl font-semibold tracking-tight">{isNew ? 'Nueva empresa' : company.name}</h1>
+  {!isNew && (
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <button
+        id="copy-company-json"
+        type="button"
+        class={buttonVariants({ variant: 'outline', size: 'sm' })}
+        data-export-url={`/companies/export?id=${encodeURIComponent(id!)}`}
+      >
+        Copiar JSON
+      </button>
+      <span id="copy-company-json-status" class="text-sm text-muted-foreground" aria-live="polite"></span>
+    </div>
+  )}
   <Notices saved={saved} error={error} />
 
   <CompanyForm company={company} isNew={isNew} />
@@ -156,3 +169,29 @@ if (!isNew) {
     </>
   )}
 </Layout>
+
+<script>
+  const copyButton = document.querySelector<HTMLButtonElement>('#copy-company-json');
+  const copyStatus = document.querySelector<HTMLElement>('#copy-company-json-status');
+
+  copyButton?.addEventListener('click', async () => {
+    if (!copyStatus) return;
+
+    copyButton.disabled = true;
+    copyStatus.textContent = '';
+
+    try {
+      const response = await fetch(copyButton.dataset.exportUrl ?? '');
+      if (!response.ok) throw new Error('No se pudo obtener el JSON de la empresa.');
+
+      await navigator.clipboard.writeText(await response.text());
+      copyStatus.textContent = 'JSON copiado.';
+    } catch (error) {
+      copyStatus.textContent = error instanceof Error
+        ? error.message
+        : 'No se pudo copiar el JSON.';
+    } finally {
+      copyButton.disabled = false;
+    }
+  });
+</script>

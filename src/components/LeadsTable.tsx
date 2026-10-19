@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { STATUSES, serviceLabel, statusLabel } from '@/lib/constants';
+import { STATUSES, serviceLabel, statusColor, statusLabel } from '@/lib/constants';
 import type { CompanyWithContacts, Contact } from '@/lib/types';
 
 // próxima acción más cercana entre los contactos de la empresa
@@ -70,7 +70,7 @@ export function LeadsTable({ companies, q, status }: { companies: CompanyWithCon
                     {c.contacts.map((ct) => (
                       <div key={ct.id} className="mb-1 flex items-center gap-2">
                         <span>{ct.name}</span>
-                        <Badge variant="outline">{statusLabel(ct.status)}</Badge>
+                        <Badge variant="secondary" className={statusColor(ct.status)}>{statusLabel(ct.status)}</Badge>
                       </div>
                     ))}
                   </TableCell>
