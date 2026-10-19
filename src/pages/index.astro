@@ -13,6 +13,13 @@ const { data, error } = await Astro.locals.supabase
   .order('score', { ascending: false, nullsFirst: false })
   .order('name');
 
+// ?imported=<empresas>-<contactos>-<omitidos> (viene de la importación CSV)
+const imp = Astro.url.searchParams.get('imported')?.match(/^(\d+)-(\d+)-(\d+)$/);
+const importedMessage = imp
+  ? `Importación lista: ${imp[1]} empresas nuevas, ${imp[2]} contactos nuevos` +
+    (imp[3] !== '0' ? `, ${imp[3]} contactos omitidos por ya existir.` : '.')
+  : undefined;
+
 let companies = (data ?? []) as CompanyWithContacts[];
 if (q) companies = companies.filter((c) => c.name.toLowerCase().includes(q));
 if (status) companies = companies.filter((c) => c.contacts.some((ct) => ct.status === status));
@@ -21,6 +28,6 @@ if (status) companies = companies.filter((c) => c.contacts.some((ct) => ct.statu
   <h1 class="mb-4 text-2xl font-semibold tracking-tight">
     Leads <span class="text-muted-foreground">({companies.length})</span>
   </h1>
-  <Notices error={error?.message} />
+  <Notices error={error?.message} message={importedMessage} />
   <LeadsTable companies={companies} q={q} status={status} />
 </Layout>

@@ -1,6 +1,8 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import { CompanyForm } from '@/components/CompanyForm';
+import { CsvImportForm } from '@/components/CsvImportForm';
+import { parseLeadsCsv } from '@/lib/csv';
 import { ContactForm, NewContactForm } from '@/components/ContactForms';
 import { Notices } from '@/components/Notices';
 import { buttonVariants } from '@/components/ui/button';
@@ -11,6 +13,8 @@ const { id } = Astro.params;
 const isNew = id === 'new';
 const supabase = Astro.locals.supabase;
 let error = '';
+let importErrors: string[] = [];
+let csvText = '';
 const saved = Astro.url.searchParams.get('ok') === '1';
 
 // ---------- Acciones (POST) ----------
@@ -34,6 +38,63 @@ if (Astro.request.method === 'POST') {
     } else {
       const { error: err } = await supabase.from('companies').update(payload).eq('id', id!);
       if (err) error = err.message; else return Astro.redirect(`/companies/${id}?ok=1`);
+    }
+  }
+
+  if (intent === 'import_csv' && isNew) {
+    const file = f.get('csv_file');
+    const pasted = String(f.get('csv_text') ?? '');
+    const text = file instanceof File && file.size > 0 ? await file.text() : pasted;
+    csvText = pasted;
+    const parsed = parseLeadsCsv(text);
+
+    if (parsed.errors.length) {
+      importErrors = parsed.errors;
+    } else {
+      // Empresas que ya existen (mismo nombre, sin distinguir mayúsculas) no se duplican.
+      const { data: existing, error: e1 } = await supabase.from('companies').select('id, name');
+      const ids = new Map<string, string>((existing ?? []).map((c) => [c.name.toLowerCase(), c.id]));
+      let createdCompanies = 0;
+      let createdContacts = 0;
+      let skippedContacts = 0;
+
+      const toCreate = parsed.companies.filter((c) => !ids.has(c.name.toLowerCase()));
+      let e2 = null;
+      if (!e1 && toCreate.length) {
+        const res = await supabase
+          .from('companies')
+          .insert(toCreate.map(({ contacts: _c, ...company }) => company))
+          .select('id, name');
+        e2 = res.error;
+        for (const c of res.data ?? []) ids.set(c.name.toLowerCase(), c.id);
+        createdCompanies = res.data?.length ?? 0;
+      }
+
+      let e3 = null;
+      if (!e1 && !e2) {
+        // Contactos ya existentes (misma empresa y nombre) se omiten, para poder reimportar sin duplicar.
+        const { data: have } = await supabase.from('contacts').select('company_id, name');
+        const seen = new Set((have ?? []).map((c) => `${c.company_id}|${c.name.toLowerCase()}`));
+        const rows = [];
+        for (const company of parsed.companies) {
+          const company_id = ids.get(company.name.toLowerCase());
+          for (const ct of company.contacts) {
+            const key = `${company_id}|${ct.name.toLowerCase()}`;
+            if (seen.has(key)) { skippedContacts++; continue; }
+            seen.add(key);
+            rows.push({ ...ct, company_id });
+          }
+        }
+        if (rows.length) {
+          const res = await supabase.from('contacts').insert(rows);
+          e3 = res.error;
+          if (!e3) createdContacts = rows.length;
+        }
+      }
+
+      const failure = e1 ?? e2 ?? e3;
+      if (failure) error = `Error al importar: ${failure.message}`;
+      else return Astro.redirect(`/?imported=${createdCompanies}-${createdContacts}-${skippedContacts}`);
     }
   }
 
@@ -82,6 +143,8 @@ if (!isNew) {
   <Notices saved={saved} error={error} />
 
   <CompanyForm company={company} isNew={isNew} />
+
+  {isNew && <CsvImportForm errors={importErrors} csvText={csvText} />}
 
   {!isNew && (
     <>
